@@ -1,0 +1,26 @@
+{
+  "version": "1",
+  "sources": {
+    "nixpkgs": {
+      "type": "GitHub",
+      "fetchType": "tarball",
+      "owner": "NixOS",
+      "repo": "nixpkgs",
+      "branch": "nixos-26.05",
+      "revision": "c5c4a43b0e8056328ec4529f735cabdb8f1942bb",
+      "url": "https://github.com/NixOS/nixpkgs/archive/c5c4a43b0e8056328ec4529f735cabdb8f1942bb.tar.gz",
+      "hash": "sha256-u6z9VTZA4Kf3RkHQo9sQI7NI4Ei/uiU9vrMqOiwWP1Y="
+    },
+    "nixpkgs-wasm-bindgen": {
+      "type": "GitHub",
+      "fetchType": "tarball",
+      "frozen": true,
+      "owner": "insipx",
+      "repo": "nixpkgs",
+      "branch": "wasm-bindgen-cli-0.2.127",
+      "revision": "a52af57dc45e8d8ed8a3c7ba3ba22f7f529db84e",
+      "url": "https://github.com/insipx/nixpkgs/archive/a52af57dc45e8d8ed8a3c7ba3ba22f7f529db84e.tar.gz",
+      "hash": "sha256-IRlIx9n7wkC++GAbFmVRgfLE8OzmjGseBCIbFu1muhg="
+    }
+  }
+}
