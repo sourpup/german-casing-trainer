@@ -185,7 +185,7 @@ fn main() {
         while cont {
             let index = rng.random_range(0..nouns.len());
             let word = &nouns[index];
-            let case = match rng.random_range(0..3) {
+            let case = match rng.random_range(0..4) {
                 1 => Case::Accusative,
                 2 => Case::Dative,
                 3 => Case::Genitive,
