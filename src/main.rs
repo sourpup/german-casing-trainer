@@ -1,4 +1,3 @@
-use inquire::ui::ErrorMessageRenderConfig;
 use inquire::{Confirm, Select, Text};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
@@ -75,6 +74,28 @@ fn settings_select(prev_settings: Option<Settings>) -> Result<Settings, std::io:
         Err(_) => {
             eprintln!("error while selecting mode");
             TrainingMode::Easy
+        }
+    };
+
+    let freq_options = vec!["Easy", "Medium", "Difficult", "Nightmare"];
+    let freq_query = Select::new("please select word difficulty", freq_options.clone()).prompt();
+    settings.frequency = match freq_query {
+        Ok(freq_query) => match freq_options
+            .into_iter()
+            .position(|x| x.contains(freq_query))
+        {
+            Some(0) => 0.005,
+            Some(1) => 0.001,
+            Some(2) => 0.00001,
+            Some(3) => 0.,
+            _ => {
+                println!("error while selecting frequency: unexpected frequency selected");
+                0.005
+            }
+        },
+        Err(_) => {
+            eprintln!("error while selecting mode");
+            0.005
         }
     };
 
@@ -196,30 +217,7 @@ fn main() {
     let all_words = parse_json("all.json");
 
     let all_nouns = match all_words {
-        Ok(data) => {
-            let freq_options = vec!["Easy", "Medium", "Difficult", "Nightmare"];
-            let freq_query =
-                Select::new("please select word difficulty", freq_options.clone()).prompt();
-            match freq_query {
-                Ok(freq_query) => match freq_options
-                    .into_iter()
-                    .position(|x| x.contains(freq_query))
-                {
-                    Some(0) => get_nouns(data, 0.005),
-                    Some(1) => get_nouns(data, 0.001),
-                    Some(2) => get_nouns(data, 0.00001),
-                    Some(3) => get_nouns(data, 0.),
-                    _ => {
-                        println!("error while selecting frequency: unexpected frequency selected");
-                        get_nouns(data, 0.005)
-                    }
-                },
-                Err(_) => {
-                    eprintln!("error while selecting mode");
-                    get_nouns(data, 0.005)
-                }
-            }
-        }
+        Ok(data) => get_nouns(data, settings.frequency),
         Err(e) => panic!("error while parsing json: {e}"),
     };
 
@@ -281,7 +279,7 @@ fn main() {
                         println!("correct answer: {answer}");
                     }
                 }
-                Err(_) => println!("error"),
+                Err(e) => println!("error matching response to answer: {e}"),
             }
 
             cont = Confirm::new("Continue?")
