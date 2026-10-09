@@ -142,9 +142,8 @@ fn main() {
     // let example: Vec<Noun> = Vec::new();
 
     let all_words = parse_json("all.json");
-    let all_nouns: std::result::Result<Vec<Noun>, serde_json::Error>;
 
-    match all_words {
+    let all_nouns = match all_words {
         Ok(data) => {
             let freq_options = vec!["Easy", "Medium", "Difficult", "Nightmare"];
             let freq_query =
@@ -154,30 +153,28 @@ fn main() {
                     .into_iter()
                     .position(|x| x.contains(freq_query))
                 {
-                    Some(0) => all_nouns = get_nouns(data, 0.005),
-                    Some(1) => all_nouns = get_nouns(data, 0.001),
-                    Some(2) => all_nouns = get_nouns(data, 0.00001),
-                    Some(3) => all_nouns = get_nouns(data, 0.),
+                    Some(0) => get_nouns(data, 0.005),
+                    Some(1) => get_nouns(data, 0.001),
+                    Some(2) => get_nouns(data, 0.00001),
+                    Some(3) => get_nouns(data, 0.),
                     _ => {
-                        all_nouns = get_nouns(data, 0.005);
                         println!("error while selecting frequency: unexpected frequency selected");
+                        get_nouns(data, 0.005)
                     }
                 },
                 Err(_) => {
                     eprintln!("error while selecting mode");
-                    all_nouns = get_nouns(data, 0.005);
+                    get_nouns(data, 0.005)
                 }
             }
         }
         Err(e) => panic!("error while parsing json: {e}"),
-    }
+    };
 
-    let nouns: Vec<Noun>;
-
-    match all_nouns {
-        Ok(data) => nouns = data,
+    let nouns = match all_nouns {
+        Ok(data) => data,
         Err(e) => panic!("error while removing non-nouns: {e}"),
-    }
+    };
 
     let mut cont = true;
 
