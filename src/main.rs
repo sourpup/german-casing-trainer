@@ -1,19 +1,88 @@
+use inquire::ui::ErrorMessageRenderConfig;
 use inquire::{Confirm, Select, Text};
 use rand::RngExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::from_reader;
 use std::fs::File;
 use std::io::BufReader;
 mod throbber;
 
+#[derive(Serialize)]
 enum TrainingMode {
     Easy,
     Hard,
     Sentence,
 }
 
+#[derive(Serialize)]
+struct Settings {
+    mode: TrainingMode,
+    frequency: f32,
+    genders: Vec<Gender>,
+    cases: Vec<Case>,
+}
+
+impl Default for Settings {
+    fn default() -> Settings {
+        Settings {
+            mode: TrainingMode::Easy,
+            frequency: 0.005,
+            genders: vec![Gender::Masculine, Gender::Feminine, Gender::Neuter],
+            cases: vec![
+                Case::Nominative,
+                Case::Accusative,
+                Case::Dative,
+                Case::Genitive,
+            ],
+        }
+    }
+}
+
+fn load_settings() -> Result<Settings, std::io::Error> {
+    settings_select(None)
+}
+
+fn settings_select(prev_settings: Option<Settings>) -> Result<Settings, std::io::Error> {
+    // check if previous settings exist
+    match prev_settings {
+        Some(settings) => {
+            let resume = Confirm::new("Resume previous session?")
+                .with_default(true)
+                .prompt()
+                .unwrap();
+            if resume {
+                return Ok(settings);
+            }
+        }
+        None => println!("no previous settings found."),
+    }
+
+    let mut settings = Settings::default();
+    // determine what mode the user wants to be in
+    let options = vec!["single word - easy", "single word - hard", "full sentences"];
+    let mode_query = Select::new("please select training mode.", options.clone()).prompt();
+
+    settings.mode = match mode_query {
+        Ok(mode_query) => match options.into_iter().position(|x| x.contains(mode_query)) {
+            Some(0) => TrainingMode::Easy,
+            Some(1) => TrainingMode::Hard,
+            Some(2) => TrainingMode::Sentence,
+            _ => {
+                println!("error while selecting mode: unexpected mode selected");
+                TrainingMode::Easy
+            }
+        },
+        Err(_) => {
+            eprintln!("error while selecting mode");
+            TrainingMode::Easy
+        }
+    };
+
+    Ok(settings)
+}
+
 #[allow(dead_code)]
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 enum Gender {
     #[serde(rename(deserialize = "m"))]
     Masculine,
@@ -24,7 +93,7 @@ enum Gender {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 enum Case {
     Nominative,
     Accusative,
@@ -41,8 +110,6 @@ struct Translations {
 #[derive(Deserialize, Debug)]
 struct Noun {
     gender: Option<Gender>,
-    // case should be determined separately
-    // case: Case,
     lemma: String,
     frequency: f32,
     translations: Translations,
@@ -118,28 +185,13 @@ fn get_article(case: Case, gender: &Gender) -> String {
 fn main() {
     println!("welcome to german casing trainer!");
 
-    let options = vec!["single word - easy", "single word - hard", "full sentences"];
-    let mode_query = Select::new("please select training mode.", options.clone()).prompt();
-
-    let mut mode = TrainingMode::Easy;
-    match mode_query {
-        Ok(mode_query) => match options.into_iter().position(|x| x.contains(mode_query)) {
-            Some(0) => {
-                mode = TrainingMode::Easy;
-            }
-            Some(1) => {
-                mode = TrainingMode::Hard;
-            }
-            Some(2) => {
-                mode = TrainingMode::Sentence;
-            }
-            _ => println!("error while selecting mode: unexpected mode selected"),
-        },
-        Err(_) => {
-            eprintln!("error while selecting mode");
+    let settings = match load_settings() {
+        Ok(settings) => settings,
+        Err(e) => {
+            println!("error while selecting settings: {e}");
+            Settings::default()
         }
-    }
-    // let example: Vec<Noun> = Vec::new();
+    };
 
     let all_words = parse_json("all.json");
 
@@ -178,7 +230,7 @@ fn main() {
 
     let mut cont = true;
 
-    if let TrainingMode::Sentence = mode {
+    if let TrainingMode::Sentence = settings.mode {
         todo!()
     } else {
         let mut rng = rand::rng();
@@ -202,7 +254,7 @@ fn main() {
                 println!("- {}", definitions)
             }
             println!();
-            if let TrainingMode::Easy = mode {
+            if let TrainingMode::Easy = settings.mode {
                 match word.gender {
                     Some(Gender::Masculine) => println!("gender: masculine"),
                     Some(Gender::Feminine) => println!("gender: feminine"),
