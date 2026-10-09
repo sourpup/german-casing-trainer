@@ -3,17 +3,17 @@ use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use serde_json::from_reader;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Write};
 mod throbber;
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 enum TrainingMode {
     Easy,
     Hard,
     Sentence,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Settings {
     mode: TrainingMode,
     frequency: f32,
@@ -37,25 +37,39 @@ impl Default for Settings {
     }
 }
 
-fn load_settings() -> Result<Settings, std::io::Error> {
-    settings_select(None)
-}
+fn load_settings() -> Result<Settings, serde_json::Error> {
+    let file = File::open("settings.json");
+    match file {
+        Ok(file) => {
+            let reader = BufReader::new(file);
+            let data = from_reader::<_, Settings>(reader);
+            match data {
+                Ok(data) => {
+                    let resume = Confirm::new("Resume previous session?")
+                        .with_default(true)
+                        .prompt()
+                        .unwrap();
 
-fn settings_select(prev_settings: Option<Settings>) -> Result<Settings, std::io::Error> {
-    // check if previous settings exist
-    match prev_settings {
-        Some(settings) => {
-            let resume = Confirm::new("Resume previous session?")
-                .with_default(true)
-                .prompt()
-                .unwrap();
-            if resume {
-                return Ok(settings);
+                    match resume {
+                        true => Ok(data),
+                        false => settings_select(),
+                    }
+                }
+
+                Err(e) => {
+                    println!("error loading previous settings: {e}");
+                    settings_select()
+                }
             }
         }
-        None => println!("no previous settings found."),
+        Err(e) => {
+            println!("error loading settings: {e}");
+            settings_select()
+        }
     }
+}
 
+fn settings_select() -> Result<Settings, serde_json::Error> {
     let mut settings = Settings::default();
     // determine what mode the user wants to be in
     let options = vec!["single word - easy", "single word - hard", "full sentences"];
@@ -99,22 +113,35 @@ fn settings_select(prev_settings: Option<Settings>) -> Result<Settings, std::io:
         }
     };
 
+    let j = serde_json::to_string(&settings)?;
+    let buffer = File::create("settings.json");
+    match buffer {
+        Ok(mut buffer) => {
+            let resp = buffer.write_fmt(format_args!("{}", j));
+            match resp {
+                Ok(_) => println!("successfully wrote to disk."),
+                Err(e) => println!("error writing to disk: {e}"),
+            }
+        }
+        Err(e) => println!("error writing settings to disk: {e}"),
+    }
+
     Ok(settings)
 }
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 enum Gender {
-    #[serde(rename(deserialize = "m"))]
+    #[serde(rename(deserialize = "m", serialize = "m"))]
     Masculine,
-    #[serde(rename(deserialize = "f"))]
+    #[serde(rename(deserialize = "f", serialize = "f"))]
     Feminine,
-    #[serde(rename(deserialize = "n"))]
+    #[serde(rename(deserialize = "n", serialize = "n"))]
     Neuter,
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 enum Case {
     Nominative,
     Accusative,
