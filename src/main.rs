@@ -1,6 +1,6 @@
 use color_eyre::Result;
 use crossterm::event::{self, KeyCode, KeyEventKind};
-use inquire::{Confirm, Select, Text};
+use inquire::{Confirm, Select};
 use rand::RngExt;
 use ratatui::layout::{Constraint, Layout, Position};
 use ratatui::style::{Color, Modifier, Style, Stylize};
@@ -523,68 +523,5 @@ fn main() {
     };
 
     let _ = color_eyre::install();
-    let _ = ratatui::run(|terminal| App::new(nouns.clone(), settings.clone()).run(terminal));
-
-    let mut cont = true;
-
-    if let TrainingMode::Sentence = settings.mode {
-        todo!()
-    } else {
-        let mut rng = rand::rng();
-        while cont {
-            let index = rng.random_range(0..nouns.len());
-            let word = &nouns[index];
-            let case = match rng.random_range(0..4) {
-                1 => Case::Accusative,
-                2 => Case::Dative,
-                3 => Case::Genitive,
-                _ => Case::Nominative,
-            };
-
-            println!();
-            println!(
-                "given the word '{}', with definitions and info: ",
-                word.lemma
-            );
-            // println!("‾‾‾‾‾‾");
-            for definitions in word.translations.en.clone() {
-                println!("- {}", definitions)
-            }
-            println!();
-            if let TrainingMode::Easy = settings.mode {
-                match word.gender {
-                    Some(Gender::Masculine) => println!("gender: masculine"),
-                    Some(Gender::Feminine) => println!("gender: feminine"),
-                    Some(Gender::Neuter) => println!("gender: neuter"),
-                    None => panic!("no gender???"),
-                }
-            }
-
-            let article = get_article(case, word.gender.as_ref().unwrap());
-
-            println!();
-            let response = Text::new("what is the definite article + word?").prompt();
-
-            match response {
-                Ok(response) => {
-                    let mut answer = article;
-                    answer.push_str(" ");
-                    answer.push_str(word.lemma.as_str());
-                    if answer == response {
-                        println!("correct answer!");
-                    } else {
-                        println!("incorrect");
-                        println!("your answer:    {response}");
-                        println!("correct answer: {answer}");
-                    }
-                }
-                Err(e) => println!("error matching response to answer: {e}"),
-            }
-
-            cont = Confirm::new("Continue?")
-                .with_default(true)
-                .prompt()
-                .unwrap();
-        }
-    }
+    let _ = ratatui::run(|terminal| App::new(nouns, settings).run(terminal));
 }
