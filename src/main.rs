@@ -13,14 +13,14 @@ use std::fs::File;
 use std::io::{BufReader, Write};
 mod throbber;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 enum TrainingMode {
     Easy,
     Hard,
     Sentence,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct Settings {
     mode: TrainingMode,
     frequency: f32,
@@ -137,7 +137,7 @@ fn settings_select() -> Result<Settings, serde_json::Error> {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 enum Gender {
     #[serde(rename(deserialize = "m", serialize = "m"))]
     Masculine,
@@ -148,7 +148,7 @@ enum Gender {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 enum Case {
     Nominative,
     Accusative,
@@ -156,13 +156,13 @@ enum Case {
     Genitive,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct Translations {
     en: Vec<String>,
 }
 
 // lemma is the base word, not including the article
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 struct Noun {
     gender: Option<Gender>,
     lemma: String,
@@ -202,38 +202,26 @@ fn get_nouns(
 
 fn get_article(case: Case, gender: &Gender) -> String {
     match case {
-        Case::Nominative => {
-            println!("case: nominative");
-            match gender {
-                Gender::Masculine => "der".to_string(),
-                Gender::Feminine => "die".to_string(),
-                Gender::Neuter => "das".to_string(),
-            }
-        }
-        Case::Accusative => {
-            println!("case: accusative");
-            match gender {
-                Gender::Masculine => "den".to_string(),
-                Gender::Feminine => "die".to_string(),
-                Gender::Neuter => "das".to_string(),
-            }
-        }
-        Case::Dative => {
-            println!("case: dative");
-            match gender {
-                Gender::Masculine => "dem".to_string(),
-                Gender::Feminine => "der".to_string(),
-                Gender::Neuter => "dem".to_string(),
-            }
-        }
-        Case::Genitive => {
-            println!("case: genitive");
-            match gender {
-                Gender::Masculine => "des".to_string(),
-                Gender::Feminine => "der".to_string(),
-                Gender::Neuter => "des".to_string(),
-            }
-        }
+        Case::Nominative => match gender {
+            Gender::Masculine => "der".to_string(),
+            Gender::Feminine => "die".to_string(),
+            Gender::Neuter => "das".to_string(),
+        },
+        Case::Accusative => match gender {
+            Gender::Masculine => "den".to_string(),
+            Gender::Feminine => "die".to_string(),
+            Gender::Neuter => "das".to_string(),
+        },
+        Case::Dative => match gender {
+            Gender::Masculine => "dem".to_string(),
+            Gender::Feminine => "der".to_string(),
+            Gender::Neuter => "dem".to_string(),
+        },
+        Case::Genitive => match gender {
+            Gender::Masculine => "des".to_string(),
+            Gender::Feminine => "der".to_string(),
+            Gender::Neuter => "des".to_string(),
+        },
     }
 }
 
@@ -247,20 +235,85 @@ struct App {
     input_mode: InputMode,
     /// History of recorded messages
     messages: Vec<String>,
+    nouns: Vec<Noun>,
+    settings: Settings,
+    answer: String,
+}
+
+// TODO: add
+fn generate_noun_question(nouns: Vec<Noun>, settings: Settings) -> Vec<String> {
+    let mut rng = rand::rng();
+    let index = rng.random_range(0..nouns.len());
+    let word = &nouns[index];
+
+    let mut new_string = "given the word '".to_string();
+    new_string.push_str(word.lemma.as_str());
+    new_string.push_str("', with definitions and info:");
+    let mut messages = vec![new_string];
+
+    for definition in word.translations.en.clone() {
+        new_string = "- ".to_string();
+        new_string.push_str(definition.as_str());
+        messages.push(new_string);
+    }
+
+    messages.push(" ".to_string());
+
+    if let TrainingMode::Easy = settings.mode {
+        match word.gender {
+            Some(Gender::Masculine) => messages.push("gender: masculine".to_string()),
+            Some(Gender::Feminine) => messages.push("gender: feminine".to_string()),
+            Some(Gender::Neuter) => messages.push("gender: neuter".to_string()),
+            None => panic!("no gender???"),
+        }
+    }
+
+    let case = match rng.random_range(0..4) {
+        1 => {
+            messages.push("case: accusative".to_string());
+            Case::Accusative
+        }
+        2 => {
+            messages.push("case: dative".to_string());
+            Case::Dative
+        }
+        3 => {
+            messages.push("case: genitive".to_string());
+            Case::Genitive
+        }
+        _ => {
+            messages.push("case: nominative".to_string());
+            Case::Nominative
+        }
+    };
+
+    messages.push(" ".to_string());
+    messages.push("what is the definite article + word?".to_string());
+
+    let article = get_article(case, word.gender.as_ref().unwrap());
+    new_string = article;
+    new_string.push_str(" ");
+    new_string.push_str(word.lemma.as_str());
+    messages.push(new_string);
+
+    messages
 }
 
 enum InputMode {
-    Normal,
-    Editing,
+    Question,
+    Answer,
 }
 
 impl App {
-    const fn new() -> Self {
+    const fn new(nouns: Vec<Noun>, settings: Settings) -> Self {
         Self {
             input: String::new(),
-            input_mode: InputMode::Normal,
+            input_mode: InputMode::Question,
             messages: Vec::new(),
             character_index: 0,
+            nouns: nouns,
+            settings: settings,
+            answer: String::new(),
         }
     }
 
@@ -323,36 +376,60 @@ impl App {
     }
 
     fn submit_message(&mut self) {
-        self.messages.push(self.input.clone());
+        self.messages.push("‾‾‾‾‾‾‾‾‾‾‾‾".to_string());
+        self.messages.push(" ".to_string());
+        self.messages.push(" ".to_string());
+
+        if self.input == self.answer {
+            self.messages.push("correct answer!".to_string());
+        } else {
+            self.messages.push("incorrect".to_string());
+            let mut new_string = "correct answer: ".to_string();
+            new_string.push_str(self.answer.as_str());
+            self.messages.push(new_string);
+        }
+        let mut new_string = "your answer: ".to_string();
+        new_string.push_str(self.input.as_str());
+        self.messages.push(new_string);
+
         self.input.clear();
         self.reset_cursor();
+        self.input_mode = InputMode::Answer;
     }
 
     fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         loop {
+            if self.answer.is_empty() {
+                let mut messages =
+                    generate_noun_question(self.nouns.clone(), self.settings.clone());
+                self.answer = messages.pop().unwrap();
+                self.messages = messages;
+            }
+
             terminal.draw(|frame| self.render(frame))?;
 
             if let Some(key) = event::read()?.as_key_press_event() {
                 match self.input_mode {
-                    InputMode::Normal => match key.code {
-                        KeyCode::Char('e') => {
-                            self.input_mode = InputMode::Editing;
+                    InputMode::Answer => match key.code {
+                        KeyCode::Enter => {
+                            self.answer = String::new();
+                            self.input_mode = InputMode::Question;
                         }
-                        KeyCode::Char('q') => {
+                        KeyCode::Esc => {
                             return Ok(());
                         }
                         _ => {}
                     },
-                    InputMode::Editing if key.kind == KeyEventKind::Press => match key.code {
+                    InputMode::Question if key.kind == KeyEventKind::Press => match key.code {
                         KeyCode::Enter => self.submit_message(),
                         KeyCode::Char(to_insert) => self.enter_char(to_insert),
                         KeyCode::Backspace => self.delete_char(),
                         KeyCode::Left => self.move_cursor_left(),
                         KeyCode::Right => self.move_cursor_right(),
-                        KeyCode::Esc => self.input_mode = InputMode::Normal,
+                        KeyCode::Esc => return Ok(()),
                         _ => {}
                     },
-                    InputMode::Editing => {}
+                    InputMode::Question => {}
                 }
             }
         }
@@ -361,29 +438,23 @@ impl App {
     fn render(&self, frame: &mut Frame) {
         let layout = Layout::vertical([
             Constraint::Length(1),
+            Constraint::Min(3),
             Constraint::Length(3),
-            Constraint::Min(1),
         ]);
-        let [help_area, input_area, messages_area] = frame.area().layout(&layout);
+        let [help_area, messages_area, input_area] = frame.area().layout(&layout);
 
         let (msg, style) = match self.input_mode {
-            InputMode::Normal => (
-                vec![
-                    "Press ".into(),
-                    "q".bold(),
-                    " to exit, ".into(),
-                    "e".bold(),
-                    " to start editing.".bold(),
-                ],
+            InputMode::Question => (
+                vec!["Press ".into(), "esc".bold(), " to exit".into()],
                 Style::default().add_modifier(Modifier::RAPID_BLINK),
             ),
-            InputMode::Editing => (
+            InputMode::Answer => (
                 vec![
                     "Press ".into(),
-                    "Esc".bold(),
-                    " to stop editing, ".into(),
                     "Enter".bold(),
-                    " to record the message".into(),
+                    " to continue, ".into(),
+                    "Esc".bold(),
+                    " to quit.".into(),
                 ],
                 Style::default(),
             ),
@@ -394,33 +465,32 @@ impl App {
 
         let input = Paragraph::new(self.input.as_str())
             .style(match self.input_mode {
-                InputMode::Normal => Style::default(),
-                InputMode::Editing => Style::default().fg(Color::Yellow),
+                InputMode::Answer => Style::default(),
+                InputMode::Question => Style::default().fg(Color::Yellow),
             })
             .block(Block::bordered().title("Input"));
         frame.render_widget(input, input_area);
         match self.input_mode {
             // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
-            InputMode::Normal => {}
-
             // Make the cursor visible and ask ratatui to put it at the specified coordinates after
             // rendering
             #[expect(clippy::cast_possible_truncation)]
-            InputMode::Editing => frame.set_cursor_position(Position::new(
+            InputMode::Question => frame.set_cursor_position(Position::new(
                 // Draw the cursor at the current position in the input field.
                 // This position can be controlled via the left and right arrow key
                 input_area.x + self.character_index as u16 + 1,
                 // Move one line down, from the border to the input line
                 input_area.y + 1,
             )),
+            InputMode::Answer => {}
         }
 
         let messages: Vec<ListItem> = self
             .messages
             .iter()
             .enumerate()
-            .map(|(i, m)| {
-                let content = Line::from(Span::raw(format!("{i}: {m}")));
+            .map(|(_i, m)| {
+                let content = Line::from(Span::raw(format!("{m}")));
                 ListItem::new(content)
             })
             .collect();
@@ -430,9 +500,6 @@ impl App {
 }
 
 fn main() {
-    color_eyre::install();
-    ratatui::run(|terminal| App::new().run(terminal));
-
     println!("welcome to german casing trainer!");
 
     let settings = match load_settings() {
@@ -454,6 +521,9 @@ fn main() {
         Ok(data) => data,
         Err(e) => panic!("error while removing non-nouns: {e}"),
     };
+
+    let _ = color_eyre::install();
+    let _ = ratatui::run(|terminal| App::new(nouns.clone(), settings.clone()).run(terminal));
 
     let mut cont = true;
 
